@@ -531,22 +531,34 @@
             box-shadow: 0 0 0 4px rgba(127, 176, 105, 0.2);
         }
 
-        /* Enhanced query cards with farming imagery */
+        /* Compact query list styling */
         .query-card {
             background: linear-gradient(145deg, white 0%, #f8fdf8 100%);
-            border-radius: 8px;
+            border-radius: 12px;
             overflow: hidden;
             box-shadow: var(--card-shadow);
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-            margin-bottom: 2.5rem;
-            border: 2px solid rgba(127, 176, 105, 0.1);
+            transition: all 0.3s ease;
+            margin-bottom: 1rem;
+            border: 1px solid rgba(127, 176, 105, 0.15);
+            padding: 1rem;
         }
 
         .query-card:hover {
-            transform: translateY(-8px) scale(1.02);
+            transform: translateY(-4px);
             box-shadow: var(--hover-shadow);
             border-color: var(--accent-green);
         }
+
+        .query-list { display: flex; flex-direction: column; gap: .75rem; }
+        .query-card--compact { display: grid; grid-template-columns: 72px 1fr; gap: 1rem; align-items: center; }
+        .query-thumb { width: 72px; height: 72px; border-radius: 10px; background: #eef6ee; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+        .query-thumb img { width: 100%; height: 100%; object-fit: cover; }
+        .query-meta-small { display:flex; gap:.5rem; align-items:center; margin-bottom:.25rem; color:#5a7a5a; font-size:.85rem; }
+        .badge { display:inline-block; padding:.2rem .6rem; border-radius:12px; font-size:.75rem; font-weight:600; }
+        .badge-expert { background:#fff3cd; color:#8a6d3b; border:1px solid #ffe08a; }
+        .badge-crop { background:#e8f5e8; color:#1a5d1a; border:1px solid #cfe9cf; }
+        .query-title-small { font-size:1rem; color:#1a3d1a; font-weight:700; margin:0; }
+        .query-subtitle { font-size:.9rem; color:#555; margin-top:.15rem; }
 
         .query-image {
             width: 100%;
@@ -906,7 +918,7 @@
                 <li><a href="#" onclick="showSection('equipment')"><i class="fas fa-tractor"></i> Equipment</a></li>
                 <li><a href="#" onclick="showSection('lending')"><i class="fas fa-handshake"></i> Lending</a></li>
                 <li><a href="#" onclick="showSection('reviews')"><i class="fas fa-star"></i> Reviews</a></li>
-                <li><a href="#" onclick="showSection('auth')"><i class="fas fa-user-circle"></i> Login</a></li>
+                <li><a id="authNavLink" href="#" onclick="showSection('auth')"><i class="fas fa-user-circle"></i> Login</a></li>
             </ul>
             <div class="mobile-menu">
                 <i class="fas fa-bars"></i>
@@ -1343,7 +1355,16 @@
             document.querySelectorAll('.section').forEach(section => {
                 section.classList.remove('active');
             });
-            document.getElementById(sectionName).classList.add('active');
+            // Auth guard: block navigation to other sections until logged in
+            try {
+                if (sectionName !== 'auth' && typeof auth !== 'undefined' && !auth.currentUser) {
+                    document.getElementById('auth').classList.add('active');
+                } else {
+                    document.getElementById(sectionName).classList.add('active');
+                }
+            } catch (e) {
+                document.getElementById(sectionName).classList.add('active');
+            }
 
             document.querySelectorAll('.nav-links a').forEach(link => {
                 link.classList.remove('active');
@@ -1360,12 +1381,18 @@
         const profileForm = document.getElementById('profileForm');
         const authCard = document.getElementById('authCard');
         const profileCard = document.getElementById('profileCard');
+        let currentFarmerId = null;
 
         function setAuthUI(user) {
             if (user) {
                 authCard.style.display = 'none';
                 profileCard.style.display = 'block';
                 loadUserProfile(user.uid);
+                // Update nav label to Profile when logged in
+                const authLink = document.getElementById('authNavLink');
+                if (authLink) {
+                    authLink.innerHTML = '<i class="fas fa-user-circle"></i> Profile';
+                }
                 // Preselect logged-in user in responder and review dropdowns
                 setTimeout(() => {
                     const responderSelect = document.getElementById('responseResponder');
@@ -1376,6 +1403,11 @@
             } else {
                 authCard.style.display = 'block';
                 profileCard.style.display = 'none';
+                // Update nav label to Login when logged out
+                const authLink = document.getElementById('authNavLink');
+                if (authLink) {
+                    authLink.innerHTML = '<i class="fas fa-user-circle"></i> Login';
+                }
             }
         }
 
@@ -1449,12 +1481,13 @@
                     currentFarmer = farmers2.find(f => f.contact_info === payload.contact_info);
                 }
 
-                // Default dropdowns to this FarmerID
+                // Default dropdowns and set currentFarmerId
                 if (currentFarmer && currentFarmer.FarmerID) {
                     const responderSelect = document.getElementById('responseResponder');
                     const reviewFrom = document.getElementById('reviewFrom');
                     if (responderSelect) responderSelect.value = currentFarmer.FarmerID;
                     if (reviewFrom) reviewFrom.value = currentFarmer.FarmerID;
+                    currentFarmerId = currentFarmer.FarmerID;
                 }
             } catch (e) {
                 console.warn('ensureFarmerExists error', e);
@@ -1617,7 +1650,7 @@
             const formData = new FormData();
             formData.append('title', document.getElementById('queryTitle').value);
             formData.append('description', document.getElementById('queryDescription').value);
-            formData.append('FarmerID', document.getElementById('farmerSelect')?.value || 1); // example farmer
+            formData.append('FarmerID', currentFarmerId || document.getElementById('farmerSelect')?.value || 1);
             formData.append('crop_type', document.getElementById('queryCropType').value);
             const imageFile = document.getElementById('queryImage').files[0];
             if (imageFile) formData.append('image', imageFile);
@@ -1648,30 +1681,38 @@
             });
 
             const grid = document.getElementById('queriesGrid');
-            grid.innerHTML = queries.map(q => {
-                const items = (queryIdToResponses[q.QueryID] || []).map(r => {
-                    const snippet = (r.response_text || '').slice(0, 80) + ((r.response_text || '').length > 80 ? '…' : '');
-                    return `
-                        <div class="mini-card">
-                            <h5>${r.is_expert ? 'Expert' : 'Farmer'}</h5>
-                            <div style="font-size:0.9rem;color:#444;text-align:center;">${snippet}</div>
-                            <div style="margin-top:auto;font-size:0.8rem;color:#666;">Votes: ${r.votes}</div>
-                        </div>
-                    `;
-                }).join('');
+            // Map CropTypeID to name for compact badges
+            const cropsRes = await fetch('/get_crops');
+            const crops = await cropsRes.json();
+            const cropIdToName = {};
+            crops.forEach(c => { cropIdToName[c.CropTypeID] = c.name; });
+
+            grid.innerHTML = '<div class="query-list">' + queries.map(q => {
+                const resp = (queryIdToResponses[q.QueryID] || []);
+                const cropBadge = q.crop_type ? `<span class="badge badge-crop">${cropIdToName[q.crop_type] || 'Crop'}</span>` : '';
+                const thumb = q.image_url ? `<img src="${q.image_url}" alt="query">` : '<i class="fas fa-image" style="color:#7fb069;font-size:1.2rem;"></i>';
+
+                const responsesHtml = resp.length ? (
+                    '<div class="responses">' + resp.map(r => {
+                        const role = r.is_expert ? 'Expert' : 'Farmer';
+                        const roleBadge = `<span class=\"badge ${r.is_expert ? 'badge-expert' : ''}\">${role}</span>`;
+                        return `
+                            <div class=\"response-inline\">${roleBadge}<div>${(r.response_text || '')}</div></div>
+                        `;
+                    }).join('') + '</div>'
+                ) : '<div style="color:#666;">No responses yet.</div>';
 
                 return `
-                <div class="query-card">
-                    <div class="query-image">${q.image_url ? `<img src="${q.image_url}" class="mini-thumb">` : '<i class="fas fa-image"></i>'}</div>
-                    <div class="query-content">
-                        <h4>${q.title}</h4>
-                        <p>${q.description || ''}</p>
-                        <div class="mini-grid">
-                            ${items || '<div style="color:#666;">No responses yet.</div>'}
-                        </div>
+                <div class=\"query-card query-card--compact\">
+                    <div class=\"query-thumb\">${thumb}</div>
+                    <div>
+                        <div class=\"query-meta-small\">${cropBadge}</div>
+                        <h5 class=\"query-title-small\">${q.title}</h5>
+                        ${q.description ? `<div class=\"query-subtitle\">${q.description}</div>` : ''}
+                        ${responsesHtml}
                     </div>
                 </div>`;
-            }).join('');
+            }).join('') + '</div>';
 
             const responseQuery = document.getElementById('responseQuery');
             if (responseQuery) {
@@ -1741,7 +1782,7 @@
         document.getElementById('equipmentForm')?.addEventListener('submit', async function (e) {
             e.preventDefault();
             const equipment = {
-                OwnerID: document.getElementById('ownerSelect')?.value || 1, // example owner
+                OwnerID: currentFarmerId || document.getElementById('ownerSelect')?.value || 1,
                 name: document.getElementById('equipmentName').value,
                 type: document.getElementById('equipmentType').value,
                 condition: document.getElementById('equipmentCondition').value,
@@ -1762,6 +1803,8 @@
                 }
                 alert(result.message);
                 loadEquipment();
+                // Refresh lending equipment dropdown so newly added items appear
+                try { await loadLendingEquipment(); } catch (e) {}
                 e.target.reset();
             } catch (err) {
                 console.error(err);
@@ -1856,7 +1899,7 @@
                 e.preventDefault();
 
                 const EquipmentID = document.getElementById('lendingEquipment').value;
-                const BorrowerID = document.getElementById('lendingBorrower').value;
+                const BorrowerID = currentFarmerId || document.getElementById('lendingBorrower').value;
                 const LenderID = document.getElementById('lendingLender').value;
                 const start_date = document.getElementById('lendingStartDate').value;
                 const duration = document.getElementById('lendingDuration').value;
@@ -1882,6 +1925,7 @@
                     alert(result.message);
                     e.target.reset();
                     loadLendingEquipment();
+                    loadLendingRequestsUI();
                 } catch (err) {
                     console.error(err);
                     alert('Error submitting lending request.');
@@ -1961,7 +2005,63 @@
             loadEquipment();
             loadReviews();
             loadLendingEquipment();
+            loadLendingRequestsUI();
+            // If Firebase auth is available and user not logged in, show auth first
+            try {
+                if (typeof auth !== 'undefined' && !auth.currentUser) {
+                    showSection('auth');
+                }
+            } catch (e) {}
         });
+
+        async function loadLendingRequestsUI() {
+            try {
+                const res = await fetch('/get_lending_requests');
+                const reqs = await res.json();
+                const grid = document.getElementById('lendingGrid');
+                if (!grid) return;
+                grid.innerHTML = reqs.map(r => {
+                    const isOwner = currentFarmerId && Number(r.LenderID) === Number(currentFarmerId);
+                    const isBorrower = currentFarmerId && Number(r.BorrowerID) === Number(currentFarmerId);
+                    const canAct = isOwner && r.status === 'Pending';
+                    const actions = canAct ? `
+                        <div style="display:flex;gap:.5rem;margin-top:.5rem;">
+                            <button class="btn btn-primary" style="padding:.4rem .8rem;border-radius:16px;" onclick="updateLendingStatus(${r.RequestID}, 'Approved')">Accept</button>
+                            <button class="btn btn-secondary" style="padding:.4rem .8rem;border-radius:16px;" onclick="updateLendingStatus(${r.RequestID}, 'Rejected')">Reject</button>
+                        </div>
+                    ` : '';
+                    const badgeClass = r.status === 'Pending' ? 'status-pending' : (r.status === 'Approved' ? 'status-available' : 'status-unavailable');
+                    return `
+                        <div class="profile-card" style="text-align:left;">
+                            <h4 style="margin-bottom:.5rem;">${r.equipment_name}</h4>
+                            <p><strong>Lender:</strong> ${r.lender_name} (#${r.LenderID})</p>
+                            <p><strong>Borrower:</strong> ${r.borrower_name} (#${r.BorrowerID})</p>
+                            <p><strong>Duration:</strong> ${r.duration} days</p>
+                            <span class="status-badge ${badgeClass}">${r.status}</span>
+                            ${actions}
+                        </div>
+                    `;
+                }).join('');
+            } catch (e) {
+                console.error('loadLendingRequestsUI error', e);
+            }
+        }
+
+        async function updateLendingStatus(requestId, status) {
+            try {
+                const res = await fetch('/update_lending_request_status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ RequestID: requestId, status })
+                });
+                const result = await res.json();
+                if (!res.ok) { alert(result.message || 'Update failed'); return; }
+                loadLendingRequestsUI();
+            } catch (e) {
+                console.error(e);
+                alert('Network error');
+            }
+        }
     </script>
 
 

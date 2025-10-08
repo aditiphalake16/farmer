@@ -334,13 +334,25 @@ def add_lending_request():
         conn = get_db_connection()
         cursor = conn.cursor()
 
+        # Always set LenderID to the equipment owner (ignore client-passed LenderID)
+        cursor.execute("SELECT OwnerID FROM Equipment WHERE EquipmentID = %s", (int(data['EquipmentID']),))
+        row = cursor.fetchone()
+        if row is None:
+            cursor.close(); conn.close()
+            return jsonify({"message": "Equipment not found"}), 400
+        owner_id = int(row[0])
+
+        if int(data['BorrowerID']) == owner_id:
+            cursor.close(); conn.close()
+            return jsonify({"message": "Owner cannot borrow own equipment"}), 400
+
         sql = """INSERT INTO LendingRequests 
                  (EquipmentID, LenderID, BorrowerID, start_date, duration, status) 
                  VALUES (%s, %s, %s, %s, %s, %s)"""
 
         cursor.execute(sql, (
             int(data['EquipmentID']),
-            int(data['LenderID']),
+            owner_id,
             int(data['BorrowerID']),
             data['start_date'],          # YYYY-MM-DD format
             int(data['duration']),
@@ -377,6 +389,33 @@ def get_lending_requests():
         print("Error fetching lending requests:", e)
         return jsonify({"message": f"Error fetching lending requests: {str(e)}"}), 500
 
+
+
+@app.route('/update_lending_request_status', methods=['POST'])
+def update_lending_request_status():
+    try:
+        data = request.get_json(silent=True) or {}
+        request_id = data.get('RequestID')
+        new_status = data.get('status')
+
+        if not request_id or not new_status:
+            return jsonify({"message": "RequestID and status are required"}), 400
+
+        # Align with DB enum: Pending, Approved, Rejected, Completed
+        if new_status not in ['Pending', 'Approved', 'Rejected', 'Completed']:
+            return jsonify({"message": "Invalid status"}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("UPDATE LendingRequests SET status = %s WHERE RequestID = %s", (new_status, int(request_id)))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({"message": "Lending request updated"})
+    except Exception as e:
+        print("Error updating lending request:", e)
+        return jsonify({"message": f"Error updating lending request: {str(e)}"}), 500
 
 
 # ------------------ REVIEWS ------------------
